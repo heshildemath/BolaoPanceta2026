@@ -873,15 +873,7 @@ class Resolver:
 
         third = re.fullmatch(r"3º colocado dos Grupos ([A-L/]+)", label)
         if third:
-            group_codes = third.group(1).split("/")
-            candidates = []
-            for group_code in group_codes:
-                group = self.groups.get(group_code)
-                if not group or not group["complete"] or len(group["standings"]) < 3:
-                    return None
-                candidates.append(group["standings"][2])
-            best = sorted(candidates, key=lambda t: (-t["points"], -t["gd"], -t["gf"], -t["wins"], t["team"]))[0]
-            return best["team"]
+            return None
         return label
 
     def team_payload(self, match, side):
@@ -2196,6 +2188,9 @@ def application(environ, start_response):
         if req.path.startswith("/api/"):
             return json_error(start_response, "Erro interno do servidor.", 500, "erro_interno")
         return send(start_response, "<h1>Erro interno</h1>", status=500, content_type="text/html; charset=utf-8")
+
+
+app = application
 
 
 if os.getenv("BOLAO_SKIP_INIT") != "1":

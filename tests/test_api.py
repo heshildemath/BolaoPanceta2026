@@ -159,6 +159,44 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(status, 200, data)
         self.assertNotIn("data:image", json.dumps(data))
 
+    def test_resolver_does_not_guess_multi_group_third_place_slots(self):
+        def group_match(number, group, team_a, team_b, result_home, result_away):
+            return {
+                "fifa_number": number,
+                "phase_slug": "grupos",
+                "group_code": group,
+                "team_a": team_a,
+                "team_b": team_b,
+                "status": "encerrado",
+                "result_home": result_home,
+                "result_away": result_away,
+            }
+
+        matches = [
+            group_match(1, "A", "A1", "A2", 2, 0),
+            group_match(2, "A", "A1", "A3", 3, 0),
+            group_match(3, "A", "A2", "A3", 1, 0),
+            group_match(4, "B", "B1", "B2", 2, 0),
+            group_match(5, "B", "B1", "B3", 3, 0),
+            group_match(6, "B", "B2", "B3", 1, 0),
+            {
+                "fifa_number": 73,
+                "phase_slug": "segunda_fase",
+                "group_code": None,
+                "team_a": "1º colocado Grupo A",
+                "team_b": "3º colocado dos Grupos A/B",
+                "status": "agendado",
+                "result_home": None,
+                "result_away": None,
+            },
+        ]
+        resolver = bolao.Resolver(matches)
+        knockout = matches[-1]
+
+        self.assertEqual(resolver.team_payload(knockout, "A")["name"], "A1")
+        self.assertEqual(resolver.team_payload(knockout, "B")["name"], "3º colocado dos Grupos A/B")
+        self.assertFalse(resolver.team_payload(knockout, "B")["resolved"])
+
     def test_prediction_locks_at_start_and_reveals_after_five_minutes(self):
         player, _ = self.register_player()
         self.register_player("Aaa Sem Palpite", "senha123")
