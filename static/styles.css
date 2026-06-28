@@ -731,7 +731,7 @@ main {
 
 .advance-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 230px);
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
   align-items: center;
   gap: 10px;
   padding: 10px;
@@ -740,22 +740,86 @@ main {
   background: rgba(138, 63, 252, 0.08);
 }
 
-.advance-row span {
+.advance-title {
+  display: grid;
+  gap: 2px;
+}
+
+.advance-title span {
   color: var(--soft);
   font-size: 0.84rem;
   font-weight: 900;
 }
 
-.advance-select {
-  width: 100%;
-  min-height: 40px;
+.advance-title small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.advance-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.advance-option {
+  min-width: 0;
+  min-height: 54px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
-  background: #0f1218;
+  background: rgba(15, 18, 24, 0.92);
   color: var(--ink);
-  padding: 0 10px;
-  font-size: 0.86rem;
-  font-weight: 850;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  text-align: left;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.advance-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+  font-weight: 950;
+  line-height: 1.1;
+}
+
+.advance-option:hover,
+.advance-option:focus-visible {
+  border-color: rgba(138, 63, 252, 0.7);
+  background: rgba(138, 63, 252, 0.16);
+}
+
+.advance-option.selected {
+  border-color: var(--accent);
+  background: rgba(138, 63, 252, 0.28);
+  box-shadow: 0 0 0 1px rgba(138, 63, 252, 0.45);
+}
+
+.advance-option:active {
+  transform: scale(0.98);
+}
+
+.advance-flag {
+  width: 34px;
+  height: 24px;
+  display: block;
+  object-fit: cover;
+  border-radius: 3px;
+  background: var(--surface-3);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.advance-flag.placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  border: 1px dashed var(--line-strong);
+  font-size: 0.68rem;
+  font-weight: 900;
 }
 
 .team {
@@ -2007,6 +2071,22 @@ th:first-child {
     grid-template-columns: 1fr;
     gap: 6px;
     padding: 9px;
+  }
+
+  .advance-option {
+    min-height: 50px;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 6px;
+    padding: 6px;
+  }
+
+  .advance-option span {
+    font-size: 0.74rem;
+  }
+
+  .advance-flag {
+    width: 30px;
+    height: 22px;
   }
 
   .team-flag {

@@ -938,32 +938,48 @@ function advanceSelector(match, options = {}) {
   if (!match.is_knockout) return "";
   const value = options.visible ? options.value || "" : "";
   const field = options.field || "advances";
-  const disabled = options.disabled || !options.visible ? "disabled" : "";
+  const disabled = Boolean(options.disabled || !options.visible);
   const hidden = options.visible ? "" : "hidden";
   return `
-    <label class="advance-row ${hidden}">
-      <span>${escapeHtml(options.label || "Classificado")}</span>
-      <select class="advance-select" data-${field} ${disabled} required>
-        <option value="">Escolha quem avança</option>
-        <option value="A" ${value === "A" ? "selected" : ""}>${escapeHtml(match.team_a.name)}</option>
-        <option value="B" ${value === "B" ? "selected" : ""}>${escapeHtml(match.team_b.name)}</option>
-      </select>
-    </label>
+    <div class="advance-row ${hidden}">
+      <div class="advance-title">
+        <span>${escapeHtml(options.label || "Classificado")}</span>
+        <small>Toque em quem avança</small>
+      </div>
+      <input type="hidden" data-${field} value="${escapeHtml(value)}" ${disabled ? "disabled" : ""} />
+      <div class="advance-options" role="group" aria-label="${escapeHtml(options.label || "Classificado")}">
+        ${advanceOption(match, "A", value, disabled)}
+        ${advanceOption(match, "B", value, disabled)}
+      </div>
+    </div>
+  `;
+}
+
+function advanceOption(match, side, value, disabled) {
+  const team = side === "A" ? match.team_a : match.team_b;
+  return `
+    <button type="button" class="advance-option ${value === side ? "selected" : ""}" data-advance-option="${side}" ${disabled ? "disabled" : ""}>
+      ${teamFlagHtml(team, "advance-flag")}
+      <span>${escapeHtml(team.name)}</span>
+    </button>
   `;
 }
 
 function teamBlock(team, right = false) {
-  const code = flagCodeForTeam(team.name);
-  const flag = code
-    ? `<img class="team-flag" src="https://flagcdn.com/w80/${code}.png" srcset="https://flagcdn.com/w160/${code}.png 2x" alt="Bandeira de ${escapeHtml(team.name)}" loading="lazy" />`
-    : `<span class="team-flag placeholder" aria-hidden="true">${escapeHtml(teamInitials(team.name))}</span>`;
   return `
     <div class="team ${right ? "right" : ""}">
-      ${flag}
+      ${teamFlagHtml(team)}
       <strong>${escapeHtml(team.name)}</strong>
       ${team.reference ? `<small>${escapeHtml(team.reference)}</small>` : ""}
     </div>
   `;
+}
+
+function teamFlagHtml(team, className = "team-flag") {
+  const code = flagCodeForTeam(team.name);
+  return code
+    ? `<img class="${className}" src="https://flagcdn.com/w80/${code}.png" srcset="https://flagcdn.com/w160/${code}.png 2x" alt="Bandeira de ${escapeHtml(team.name)}" loading="lazy" />`
+    : `<span class="${className} placeholder" aria-hidden="true">${escapeHtml(teamInitials(team.name))}</span>`;
 }
 
 function flagCodeForTeam(name) {
@@ -1028,6 +1044,10 @@ async function handleMatchClick(event) {
   const card = button.closest(".match-card");
   if (!card) return;
   const matchId = Number(card.dataset.matchId);
+  if (button.classList.contains("advance-option")) {
+    selectAdvanceOption(button, matchId);
+    return;
+  }
   if (button.classList.contains("save-prediction")) {
     pulseButton(button);
     await savePrediction(card, matchId);
@@ -1051,19 +1071,56 @@ function handlePredictionInput(event) {
     advances: $("[data-advances]", card)?.value || "",
   });
   updateAdvanceVisibility(card, matchId, "advances");
+  const advances = $("[data-advances]", card)?.value || "";
+  const current = state.predictionDrafts.get(matchId);
+  if (current) state.predictionDrafts.set(matchId, { ...current, advances });
 }
 
 function updateAdvanceVisibility(card, matchId, field) {
   const match = state.matches.find((item) => item.id === matchId);
   const row = $(`[data-${field}]`, card)?.closest(".advance-row");
-  const select = $(`[data-${field}]`, card);
-  if (!match || !row || !select) return;
+  const input = $(`[data-${field}]`, card);
+  if (!match || !row || !input) return;
   const home = field === "advances" ? $("[data-home]", card)?.value : $(".admin-home", card)?.value;
   const away = field === "advances" ? $("[data-away]", card)?.value : $(".admin-away", card)?.value;
   const visible = shouldShowAdvanceSelector(match, home, away);
   row.classList.toggle("hidden", !visible);
-  select.disabled = !visible || isLocked(match) && field === "advances";
-  if (!visible) select.value = "";
+  const disabled = !visible || (isLocked(match) && field === "advances");
+  input.disabled = disabled;
+  if (!visible) input.value = "";
+  syncAdvanceOptions(row, input.value, disabled);
+}
+
+function selectAdvanceOption(button, matchId) {
+  const card = button.closest(".match-card");
+  const row = button.closest(".advance-row");
+  const predictionInput = $("[data-advances]", row);
+  const resultInput = $("[data-advance-winner]", row);
+  const field = predictionInput ? "advances" : "advance-winner";
+  const input = predictionInput || resultInput;
+  if (!card || !row || !input || input.disabled) return;
+  input.value = button.dataset.advanceOption;
+  syncAdvanceOptions(row, input.value, false);
+  if (field === "advances") {
+    state.predictionDrafts.set(matchId, {
+      home_score: $("[data-home]", card).value,
+      away_score: $("[data-away]", card).value,
+      advances: input.value,
+    });
+  } else {
+    state.resultDrafts.set(matchId, {
+      result_home: $(".admin-home", card).value,
+      result_away: $(".admin-away", card).value,
+      advance_winner: input.value,
+    });
+  }
+}
+
+function syncAdvanceOptions(row, value, disabled) {
+  $$(".advance-option", row).forEach((option) => {
+    option.classList.toggle("selected", option.dataset.advanceOption === value);
+    option.disabled = disabled;
+  });
 }
 
 function pulseButton(button) {
@@ -1669,6 +1726,10 @@ async function handleAdminClick(event) {
   const card = button.closest(".match-card");
   if (!card) return;
   const matchId = Number(card.dataset.matchId);
+  if (button.classList.contains("advance-option")) {
+    selectAdvanceOption(button, matchId);
+    return;
+  }
   if (button.classList.contains("save-result")) {
     await saveResult(card, matchId);
   }
@@ -1688,6 +1749,9 @@ function handleResultInput(event) {
     advance_winner: $("[data-advance-winner]", card)?.value || "",
   });
   updateAdvanceVisibility(card, matchId, "advance-winner");
+  const advance_winner = $("[data-advance-winner]", card)?.value || "";
+  const current = state.resultDrafts.get(matchId);
+  if (current) state.resultDrafts.set(matchId, { ...current, advance_winner });
 }
 
 async function handleAdminPanelClick(event) {
