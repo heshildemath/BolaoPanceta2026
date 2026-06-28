@@ -729,6 +729,35 @@ main {
   min-height: 116px;
 }
 
+.advance-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 230px);
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(138, 63, 252, 0.24);
+  border-radius: 8px;
+  background: rgba(138, 63, 252, 0.08);
+}
+
+.advance-row span {
+  color: var(--soft);
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.advance-select {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #0f1218;
+  color: var(--ink);
+  padding: 0 10px;
+  font-size: 0.86rem;
+  font-weight: 850;
+}
+
 .team {
   min-width: 0;
   display: grid;
@@ -1972,6 +2001,12 @@ th:first-child {
   .score-row {
     grid-template-columns: minmax(62px, 1fr) 44px 14px 44px minmax(62px, 1fr);
     gap: 6px;
+  }
+
+  .advance-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 9px;
   }
 
   .team-flag {

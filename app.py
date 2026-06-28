@@ -705,16 +705,30 @@ SCORE_RULES = [
     ("result_goal_difference", "Resultado e diferença de gols", 4),
     ("result_team_goals", "Resultado e total de gols de uma equipe", 3),
     ("result", "Resultado (vencedor ou empate)", 2),
+    ("qualified", "Classificado", 2),
     ("inverted", "Placar invertido", -2),
     ("zero", "Placar errado", 0),
 ]
 
 
+def actual_advance_side(match):
+    if match.get("result_home") is None or match.get("result_away") is None:
+        return None
+    home = int(match["result_home"])
+    away = int(match["result_away"])
+    if home > away:
+        return "A"
+    if away > home:
+        return "B"
+    advance = match.get("penalty_winner")
+    return advance if advance in {"A", "B"} else None
+
+
 def score_prediction_detail(prediction, match):
     if prediction is None:
-        return {"points": 0, "rule_key": "zero", "rule_label": "0 pontos"}
+        return {"points": 0, "base_points": 0, "qualified_bonus": 0, "rule_key": "zero", "rule_label": "0 pontos"}
     if match.get("result_home") is None or match.get("result_away") is None:
-        return {"points": 0, "rule_key": "zero", "rule_label": "0 pontos"}
+        return {"points": 0, "base_points": 0, "qualified_bonus": 0, "rule_key": "zero", "rule_label": "0 pontos"}
 
     ph = int(prediction["home_score"])
     pa = int(prediction["away_score"])
@@ -722,18 +736,62 @@ def score_prediction_detail(prediction, match):
     ra = int(match["result_away"])
     pred_outcome = prediction_outcome(ph, pa)
     real_outcome = prediction_outcome(rh, ra)
+    qualified_bonus = (
+        2
+        if is_knockout(match)
+        and pred_outcome == "D"
+        and prediction.get("advances") in {"A", "B"}
+        and prediction.get("advances") == actual_advance_side(match)
+        else 0
+    )
 
     if ph == rh and pa == ra:
-        return {"points": 6, "rule_key": "exact", "rule_label": "Placar exato"}
+        return {
+            "points": 6 + qualified_bonus,
+            "base_points": 6,
+            "qualified_bonus": qualified_bonus,
+            "rule_key": "exact",
+            "rule_label": "Placar exato",
+        }
     if pred_outcome == real_outcome:
         if ph - pa == rh - ra:
-            return {"points": 4, "rule_key": "result_goal_difference", "rule_label": "Resultado e diferença de gols"}
+            return {
+                "points": 4 + qualified_bonus,
+                "base_points": 4,
+                "qualified_bonus": qualified_bonus,
+                "rule_key": "result_goal_difference",
+                "rule_label": "Resultado e diferença de gols",
+            }
         if ph == rh or pa == ra:
-            return {"points": 3, "rule_key": "result_team_goals", "rule_label": "Resultado e total de gols de uma equipe"}
-        return {"points": 2, "rule_key": "result", "rule_label": "Resultado (vencedor ou empate)"}
+            return {
+                "points": 3 + qualified_bonus,
+                "base_points": 3,
+                "qualified_bonus": qualified_bonus,
+                "rule_key": "result_team_goals",
+                "rule_label": "Resultado e total de gols de uma equipe",
+            }
+        return {
+            "points": 2 + qualified_bonus,
+            "base_points": 2,
+            "qualified_bonus": qualified_bonus,
+            "rule_key": "result",
+            "rule_label": "Resultado (vencedor ou empate)",
+        }
     if ph == ra and pa == rh and pred_outcome != "D" and real_outcome != "D":
-        return {"points": -2, "rule_key": "inverted", "rule_label": "Placar invertido"}
-    return {"points": 0, "rule_key": "zero", "rule_label": "Placar errado"}
+        return {
+            "points": -2 + qualified_bonus,
+            "base_points": -2,
+            "qualified_bonus": qualified_bonus,
+            "rule_key": "inverted",
+            "rule_label": "Placar invertido",
+        }
+    return {
+        "points": qualified_bonus,
+        "base_points": 0,
+        "qualified_bonus": qualified_bonus,
+        "rule_key": "zero",
+        "rule_label": "Placar errado",
+    }
 
 
 def score_prediction(prediction, match):
@@ -761,6 +819,11 @@ def build_ranking_breakdown(rows):
             if rule["key"] == detail["rule_key"]:
                 rule["count"] += 1
                 break
+        if detail.get("qualified_bonus"):
+            for rule in stats[user_id]["rules"]:
+                if rule["key"] == "qualified":
+                    rule["count"] += 1
+                    break
     return stats
 
 
@@ -1012,6 +1075,7 @@ def serialize_prediction(prediction):
     return {
         "home_score": prediction["home_score"],
         "away_score": prediction["away_score"],
+        "advances": prediction.get("advances"),
         "points": prediction.get("points", 0),
         "updated_at": prediction.get("updated_at"),
     }
@@ -1041,6 +1105,7 @@ def serialize_match(match, resolver, prediction=None, user=None, now=None):
         "is_knockout": is_knockout(match),
         "result_home": match.get("result_home"),
         "result_away": match.get("result_away"),
+        "advance_winner": match.get("penalty_winner"),
         "closed_at": match.get("closed_at"),
         "my_prediction": serialize_prediction(prediction),
     }
@@ -1078,9 +1143,11 @@ def recalc_all_points(conn):
                 p.points,
                 p.home_score,
                 p.away_score,
+                p.advances,
                 m.phase_slug,
                 m.result_home,
-                m.result_away
+                m.result_away,
+                m.penalty_winner
             FROM predictions p
             JOIN matches m ON m.id = p.match_id
             WHERE m.result_home IS NOT NULL AND m.result_away IS NOT NULL
@@ -1121,6 +1188,13 @@ def parse_score(value, field_name):
     if score < 0 or score > 99:
         raise ValueError(f"O placar de {field_name} deve ficar entre 0 e 99.")
     return score
+
+
+def validate_advance_side(value, field_name="classificado"):
+    value = (value or "").strip().upper()
+    if value not in {"A", "B"}:
+        raise ValueError(f"Informe o {field_name}.")
+    return value
 
 
 def validate_username(username):
@@ -1289,9 +1363,11 @@ def build_ranking(conn):
                 p.user_id,
                 p.home_score,
                 p.away_score,
+                p.advances,
                 m.phase_slug,
                 m.result_home,
-                m.result_away
+                m.result_away,
+                m.penalty_winner
             FROM predictions p
             JOIN matches m ON m.id = p.match_id
             JOIN users u ON u.id = p.user_id
@@ -1466,8 +1542,6 @@ def build_export_payload(conn):
     users = build_admin_users(conn)
     ranking = build_ranking(conn)
     matches = DB.rows(DB.execute(conn, "SELECT * FROM matches ORDER BY start_at ASC, fifa_number ASC"))
-    for match in matches:
-        match.pop("penalty_winner", None)
     predictions = DB.rows(
         DB.execute(
             conn,
@@ -1486,6 +1560,7 @@ def build_export_payload(conn):
                 m.start_at,
                 p.home_score,
                 p.away_score,
+                p.advances,
                 p.points,
                 p.updated_at
             FROM predictions p
@@ -1555,8 +1630,10 @@ def export_payload_as_csv(payload):
         "status",
         "result_home",
         "result_away",
+        "result_advance_winner",
         "prediction_home",
         "prediction_away",
+        "prediction_advances",
         "prediction_points",
         "prediction_updated_at",
         "early_champion",
@@ -1615,6 +1692,7 @@ def export_payload_as_csv(payload):
                 "status": match["status"],
                 "result_home": match.get("result_home"),
                 "result_away": match.get("result_away"),
+                "result_advance_winner": match.get("penalty_winner"),
             }
         )
     for prediction in payload["predictions"]:
@@ -1633,6 +1711,7 @@ def export_payload_as_csv(payload):
                 "start_at": prediction["start_at"],
                 "prediction_home": prediction["home_score"],
                 "prediction_away": prediction["away_score"],
+                "prediction_advances": prediction.get("advances"),
                 "prediction_points": prediction["points"],
                 "prediction_updated_at": prediction["updated_at"],
             }
@@ -1956,6 +2035,7 @@ def handle_api(req, start_response):
                         p.id AS prediction_id,
                         p.home_score,
                         p.away_score,
+                        p.advances,
                         p.points,
                         p.updated_at
                     FROM users u
@@ -2007,7 +2087,11 @@ def handle_api(req, start_response):
             try:
                 home_score = parse_score(body.get("home_score"), "time A")
                 away_score = parse_score(body.get("away_score"), "time B")
-                advances = None
+                advances = (
+                    validate_advance_side(body.get("advances"))
+                    if is_knockout(match) and home_score == away_score
+                    else None
+                )
             except ValueError as exc:
                 return json_error(start_response, str(exc), 400, "palpite_invalido")
             DB.execute(
@@ -2047,7 +2131,11 @@ def handle_api(req, start_response):
             try:
                 home = parse_score(body.get("result_home"), "time A")
                 away = parse_score(body.get("result_away"), "time B")
-                penalty_winner = None
+                penalty_winner = (
+                    validate_advance_side(body.get("advance_winner"))
+                    if is_knockout(match) and home == away
+                    else None
+                )
             except ValueError as exc:
                 return json_error(start_response, str(exc), 400, "resultado_invalido")
 

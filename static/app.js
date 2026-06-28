@@ -317,11 +317,13 @@ function bindUi() {
 
   $("#matches-list").addEventListener("click", handleMatchClick);
   $("#matches-list").addEventListener("input", handlePredictionInput);
+  $("#matches-list").addEventListener("change", handlePredictionInput);
   $("#early-final-panel").addEventListener("submit", handleEarlyFinalSubmit);
   $("#ranking-list").addEventListener("click", handleRankingClick);
   $("#ranking-list").addEventListener("keydown", handleRankingKeydown);
   $("#admin-list").addEventListener("click", handleAdminClick);
   $("#admin-list").addEventListener("input", handleResultInput);
+  $("#admin-list").addEventListener("change", handleResultInput);
   $("#panel-admin").addEventListener("click", handleAdminPanelClick);
   $("#details-modal").addEventListener("click", handleDetailsClick);
   $("#avatar-modal").addEventListener("click", handleAvatarModalClick);
@@ -880,6 +882,8 @@ function matchCard(match) {
   const locked = isLocked(match);
   const homeValue = draft.home_score ?? prediction.home_score ?? "";
   const awayValue = draft.away_score ?? prediction.away_score ?? "";
+  const advanceValue = draft.advances ?? prediction.advances ?? "";
+  const showAdvance = shouldShowAdvanceSelector(match, homeValue, awayValue);
   const status = currentStatus(match);
   const statusClass = status === "encerrado" ? "gold" : status === "em andamento" ? "blue" : "";
   const points = prediction.points ? ` · ${prediction.points} pts` : "";
@@ -905,6 +909,13 @@ function matchCard(match) {
           <input class="score-input" data-away type="number" min="0" max="99" inputmode="numeric" value="${escapeHtml(awayValue)}" ${locked ? "disabled" : ""} aria-label="Placar do time B" />
           ${teamBlock(match.team_b, true)}
         </div>
+        ${advanceSelector(match, {
+          value: advanceValue,
+          disabled: locked,
+          visible: showAdvance,
+          field: "advances",
+          label: "Classificado se empate",
+        })}
         ${resultLine(match)}
         <div class="actions-row">
           <button type="button" class="primary-action save-prediction" ${locked ? "disabled" : ""}>
@@ -916,6 +927,28 @@ function matchCard(match) {
         </div>
       </div>
     </article>
+  `;
+}
+
+function shouldShowAdvanceSelector(match, homeValue, awayValue) {
+  return Boolean(match.is_knockout && homeValue !== "" && awayValue !== "" && Number(homeValue) === Number(awayValue));
+}
+
+function advanceSelector(match, options = {}) {
+  if (!match.is_knockout) return "";
+  const value = options.visible ? options.value || "" : "";
+  const field = options.field || "advances";
+  const disabled = options.disabled || !options.visible ? "disabled" : "";
+  const hidden = options.visible ? "" : "hidden";
+  return `
+    <label class="advance-row ${hidden}">
+      <span>${escapeHtml(options.label || "Classificado")}</span>
+      <select class="advance-select" data-${field} ${disabled} required>
+        <option value="">Escolha quem avança</option>
+        <option value="A" ${value === "A" ? "selected" : ""}>${escapeHtml(match.team_a.name)}</option>
+        <option value="B" ${value === "B" ? "selected" : ""}>${escapeHtml(match.team_b.name)}</option>
+      </select>
+    </label>
   `;
 }
 
@@ -952,7 +985,11 @@ function resultLine(match) {
       : "";
   }
   const myPoints = match.my_prediction ? ` · seu palpite: ${match.my_prediction.points || 0} pts` : "";
-  return `<div class="result-line">Resultado: ${match.result_home} x ${match.result_away}${myPoints}</div>`;
+  const advanceText =
+    match.is_knockout && Number(match.result_home) === Number(match.result_away) && match.advance_winner
+      ? ` · classificado: ${match.advance_winner === "A" ? escapeHtml(match.team_a.name) : escapeHtml(match.team_b.name)}`
+      : "";
+  return `<div class="result-line">Resultado: ${match.result_home} x ${match.result_away}${advanceText}${myPoints}</div>`;
 }
 
 function publicPredictionRow(row, match) {
@@ -1004,14 +1041,29 @@ async function handleMatchClick(event) {
 }
 
 function handlePredictionInput(event) {
-  if (!event.target.matches("[data-home], [data-away]")) return;
+  if (!event.target.matches("[data-home], [data-away], [data-advances]")) return;
   const card = event.target.closest(".match-card");
   if (!card) return;
   const matchId = Number(card.dataset.matchId);
   state.predictionDrafts.set(matchId, {
     home_score: $("[data-home]", card).value,
     away_score: $("[data-away]", card).value,
+    advances: $("[data-advances]", card)?.value || "",
   });
+  updateAdvanceVisibility(card, matchId, "advances");
+}
+
+function updateAdvanceVisibility(card, matchId, field) {
+  const match = state.matches.find((item) => item.id === matchId);
+  const row = $(`[data-${field}]`, card)?.closest(".advance-row");
+  const select = $(`[data-${field}]`, card);
+  if (!match || !row || !select) return;
+  const home = field === "advances" ? $("[data-home]", card)?.value : $(".admin-home", card)?.value;
+  const away = field === "advances" ? $("[data-away]", card)?.value : $(".admin-away", card)?.value;
+  const visible = shouldShowAdvanceSelector(match, home, away);
+  row.classList.toggle("hidden", !visible);
+  select.disabled = !visible || isLocked(match) && field === "advances";
+  if (!visible) select.value = "";
 }
 
 function pulseButton(button) {
@@ -1024,6 +1076,7 @@ async function savePrediction(card, matchId) {
   const body = {
     home_score: $("[data-home]", card).value,
     away_score: $("[data-away]", card).value,
+    advances: $("[data-advances]", card)?.value || "",
   };
   try {
     const data = await api(`/api/predictions/${matchId}`, { method: "POST", body });
@@ -1103,19 +1156,28 @@ function renderDetailsModal() {
     </div>
     ${state.details.tab === "stats" ? detailsStats(match, rows) : detailsPredictions(match, rows)}
   `;
-  normalizePublicPredictions(rows);
+  normalizePublicPredictions(rows, match);
   modal.classList.remove("hidden");
 }
 
-function normalizePublicPredictions(rows = []) {
+function normalizePublicPredictions(rows = [], match = null) {
   $$(".details-list .public-prediction .prediction-score").forEach((element, index) => {
     const row = rows[index];
     if (!row || row.has_prediction === false) {
       element.textContent = "Sem palpite";
       return;
     }
-    element.textContent = `${row.home_score} \u00d7 ${row.away_score}`;
+    element.textContent = predictionScoreText(row, match);
   });
+}
+
+function predictionScoreText(row, match) {
+  const score = `${row.home_score} \u00d7 ${row.away_score}`;
+  if (!match?.is_knockout || Number(row.home_score) !== Number(row.away_score) || !row.advances) {
+    return score;
+  }
+  const teamName = row.advances === "A" ? match.team_a.name : match.team_b.name;
+  return `${score} · ${teamName}`;
 }
 
 function detailsPredictions(match, rows) {
@@ -1560,6 +1622,8 @@ function adminCard(match) {
   const draft = state.resultDrafts.get(match.id) || {};
   const resultHome = draft.result_home ?? match.result_home ?? "";
   const resultAway = draft.result_away ?? match.result_away ?? "";
+  const advanceWinner = draft.advance_winner ?? match.advance_winner ?? "";
+  const showAdvance = shouldShowAdvanceSelector(match, resultHome, resultAway);
   return `
     <article class="match-card" data-match-id="${match.id}" data-admin="true">
       <div class="match-top">
@@ -1579,6 +1643,13 @@ function adminCard(match) {
           <input class="score-input admin-away" type="number" min="0" max="99" inputmode="numeric" value="${escapeHtml(resultAway)}" aria-label="Resultado do time B" />
           ${teamBlock(match.team_b, true)}
         </div>
+        ${advanceSelector(match, {
+          value: advanceWinner,
+          disabled: false,
+          visible: showAdvance,
+          field: "advance-winner",
+          label: "Classificado",
+        })}
         <div class="actions-row">
           <button type="button" class="primary-action save-result">
             <span aria-hidden="true">✓</span><span>${hasResult ? "Atualizar resultado" : "Encerrar partida"}</span>
@@ -1607,14 +1678,16 @@ async function handleAdminClick(event) {
 }
 
 function handleResultInput(event) {
-  if (!event.target.matches(".admin-home, .admin-away")) return;
+  if (!event.target.matches(".admin-home, .admin-away, [data-advance-winner]")) return;
   const card = event.target.closest(".match-card");
   if (!card) return;
   const matchId = Number(card.dataset.matchId);
   state.resultDrafts.set(matchId, {
     result_home: $(".admin-home", card).value,
     result_away: $(".admin-away", card).value,
+    advance_winner: $("[data-advance-winner]", card)?.value || "",
   });
+  updateAdvanceVisibility(card, matchId, "advance-winner");
 }
 
 async function handleAdminPanelClick(event) {
@@ -1727,6 +1800,7 @@ async function saveResult(card, matchId) {
   const body = {
     result_home: $(".admin-home", card).value,
     result_away: $(".admin-away", card).value,
+    advance_winner: $("[data-advance-winner]", card)?.value || "",
   };
   try {
     const data = await api(`/api/admin/matches/${matchId}/result`, { method: "POST", body });

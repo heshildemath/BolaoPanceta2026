@@ -412,24 +412,56 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(row["finalist_a"], "Brasil")
         self.assertEqual(row["finalist_b"], "Argentina")
 
-    def test_knockout_draw_does_not_require_advancing_team(self):
+    def test_knockout_draw_requires_advancing_team_and_scores_bonus(self):
         player, user = self.register_player()
         match_id = self.first_knockout_match_id()
         self.set_match_start(match_id, bolao.now_brasilia() + timedelta(hours=2))
 
         status, data, _ = player.post(f"/api/predictions/{match_id}", {"home_score": 1, "away_score": 1})
+        self.assertEqual(status, 400)
+        self.assertEqual(data["code"], "palpite_invalido")
+
+        status, data, _ = player.post(
+            f"/api/predictions/{match_id}",
+            {"home_score": 1, "away_score": 1, "advances": "A"},
+        )
         self.assertEqual(status, 200, data)
-        self.assertNotIn("advances", data["prediction"])
+        self.assertEqual(data["prediction"]["advances"], "A")
 
         status, data, _ = self.admin.post(
             f"/api/admin/matches/{match_id}/result",
             {"result_home": 1, "result_away": 1},
         )
+        self.assertEqual(status, 400)
+        self.assertEqual(data["code"], "resultado_invalido")
+
+        status, data, _ = self.admin.post(
+            f"/api/admin/matches/{match_id}/result",
+            {"result_home": 1, "result_away": 1, "advance_winner": "A"},
+        )
         self.assertEqual(status, 200, data)
 
         status, data, _ = self.admin.get("/api/ranking")
         player_rank = next(row for row in data["ranking"] if row["id"] == user["id"])
-        self.assertEqual(player_rank["points"], 6)
+        self.assertEqual(player_rank["points"], 8)
+        qualified_rule = next(rule for rule in player_rank["breakdown"]["rules"] if rule["key"] == "qualified")
+        self.assertEqual(qualified_rule["count"], 1)
+
+    def test_knockout_draw_bonus_keeps_existing_draw_goal_difference_rule(self):
+        detail = bolao.score_prediction_detail(
+            {"home_score": 0, "away_score": 0, "advances": "A"},
+            {
+                "phase_slug": "segunda_fase",
+                "result_home": 1,
+                "result_away": 1,
+                "penalty_winner": "A",
+            },
+        )
+
+        self.assertEqual(detail["rule_key"], "result_goal_difference")
+        self.assertEqual(detail["base_points"], 4)
+        self.assertEqual(detail["qualified_bonus"], 2)
+        self.assertEqual(detail["points"], 6)
 
     def test_admin_can_rename_reset_password_and_disable_user(self):
         _, user = self.register_player("Carlos", "senha123")
