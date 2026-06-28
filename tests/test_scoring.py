@@ -3,7 +3,7 @@ import unittest
 
 os.environ["BOLAO_SKIP_INIT"] = "1"
 
-from app import score_prediction
+from app import score_prediction, score_prediction_detail
 
 
 def match(home, away, phase_slug="grupos", penalty_winner=None):
@@ -55,6 +55,17 @@ class ScoringTest(unittest.TestCase):
             score_prediction(prediction(0, 0, "A"), match(2, 2, phase_slug="oitavas", penalty_winner="B")),
             4,
         )
+
+    def test_knockout_advance_bonus_only_applies_when_match_draws(self):
+        detail = score_prediction_detail(
+            prediction(1, 1, "A"),
+            match(1, 0, phase_slug="oitavas"),
+        )
+
+        self.assertEqual(detail["rule_key"], "zero")
+        self.assertEqual(detail["base_points"], 0)
+        self.assertEqual(detail["qualified_bonus"], 0)
+        self.assertEqual(detail["points"], 0)
 
 
 if __name__ == "__main__":

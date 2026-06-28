@@ -740,6 +740,7 @@ def score_prediction_detail(prediction, match):
         2
         if is_knockout(match)
         and pred_outcome == "D"
+        and real_outcome == "D"
         and prediction.get("advances") in {"A", "B"}
         and prediction.get("advances") == actual_advance_side(match)
         else 0
