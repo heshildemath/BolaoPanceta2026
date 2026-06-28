@@ -958,11 +958,19 @@ function advanceSelector(match, options = {}) {
 function advanceOption(match, side, value, disabled) {
   const team = side === "A" ? match.team_a : match.team_b;
   return `
-    <button type="button" class="advance-option ${value === side ? "selected" : ""}" data-advance-option="${side}" ${disabled ? "disabled" : ""}>
+    <button type="button" class="advance-option ${advanceNameClass(team.name)} ${value === side ? "selected" : ""}" data-advance-option="${side}" ${disabled ? "disabled" : ""}>
       ${teamFlagHtml(team, "advance-flag")}
       <span>${escapeHtml(team.name)}</span>
     </button>
   `;
+}
+
+function advanceNameClass(name) {
+  const length = String(name || "").length;
+  if (length > 18) return "name-xs";
+  if (length > 13) return "name-sm";
+  if (length > 10) return "name-md";
+  return "";
 }
 
 function teamBlock(team, right = false) {

@@ -765,26 +765,40 @@ main {
 
 .advance-option {
   min-width: 0;
-  min-height: 54px;
+  min-height: 68px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: rgba(15, 18, 24, 0.92);
   color: var(--ink);
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
+  justify-items: center;
+  align-content: center;
+  gap: 5px;
   padding: 7px 8px;
-  text-align: left;
+  text-align: center;
   transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
 .advance-option span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: 0.82rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+  font-size: 0.78rem;
   font-weight: 950;
   line-height: 1.1;
+}
+
+.advance-option.name-md span {
+  font-size: 0.7rem;
+}
+
+.advance-option.name-sm span {
+  font-size: 0.62rem;
+}
+
+.advance-option.name-xs span {
+  font-size: 0.54rem;
 }
 
 .advance-option:hover,
@@ -804,8 +818,8 @@ main {
 }
 
 .advance-flag {
-  width: 34px;
-  height: 24px;
+  width: 42px;
+  height: 28px;
   display: block;
   object-fit: cover;
   border-radius: 3px;
@@ -2074,19 +2088,30 @@ th:first-child {
   }
 
   .advance-option {
-    min-height: 50px;
-    grid-template-columns: 30px minmax(0, 1fr);
-    gap: 6px;
-    padding: 6px;
+    min-height: 66px;
+    gap: 4px;
+    padding: 6px 5px;
   }
 
   .advance-option span {
-    font-size: 0.74rem;
+    font-size: 0.72rem;
+  }
+
+  .advance-option.name-md span {
+    font-size: 0.64rem;
+  }
+
+  .advance-option.name-sm span {
+    font-size: 0.56rem;
+  }
+
+  .advance-option.name-xs span {
+    font-size: 0.5rem;
   }
 
   .advance-flag {
-    width: 30px;
-    height: 22px;
+    width: 40px;
+    height: 27px;
   }
 
   .team-flag {
